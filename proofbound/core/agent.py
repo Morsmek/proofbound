@@ -1,4 +1,8 @@
+import os
+import re
+import json
 import uuid
+import httpx
 from typing import Optional, List, Dict, Any
 from proofbound.models.action_run import (
     ActionRun,
@@ -80,14 +84,29 @@ class ProofboundAgent:
         lower = intent.lower()
         steps = []
         
+        # Extract explicit URLs if present
+        url_match = re.search(r'https?://[^\s]+', intent)
+        extracted_url = url_match.group(0) if url_match else ""
+
+        # Extract target file paths if present
+        file_match = re.search(r'[\w\-./]+\.(?:txt|json|md|py|js|yaml|toml|html|css)', intent)
+        target_file = file_match.group(0) if file_match else "./workspace_sandbox/config.txt"
+
         if "draft" in lower or "compose email" in lower or ("email" in lower and "research" not in lower) or "queue message" in lower:
+            email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', intent)
+            recipient = email_match.group(0) if email_match else "team@proofbound.org"
+            
             steps.append(PlanStep(
                 id="step-1",
                 step_index=1,
-                title="Stage Non-Destructive Reversible Draft",
+                title=f"Stage Non-Destructive Reversible Draft for {recipient}",
                 description="Compose email/message body and stage without triggering direct transmission.",
                 tool_name="draft_create_email",
-                parameters={"recipient": "team@proofbound.org", "subject": "Ops Brief", "body": f"Draft generated for: {intent}"},
+                parameters={
+                    "recipient": recipient,
+                    "subject": f"Operational Brief: {intent[:30]}",
+                    "body": f"Proposed draft content generated for:\\n\\n'{intent}'\\n\\nPrepared under Proofbound Policy Gate."
+                },
                 estimated_risk=RiskLevel.MEDIUM
             ))
 
@@ -95,41 +114,48 @@ class ProofboundAgent:
             steps.append(PlanStep(
                 id="step-1",
                 step_index=1,
-                title="Search Workspace Files",
+                title=f"Search Workspace Files for {os.path.basename(target_file)}",
                 description="Locate target file in sandboxed workspace directory.",
                 tool_name="workspace_search",
-                parameters={"pattern": "config"},
+                parameters={"pattern": os.path.basename(target_file)},
                 estimated_risk=RiskLevel.LOW
             ))
             steps.append(PlanStep(
                 id="step-2",
                 step_index=2,
-                title="Apply Unified File Patch with Reversible Backup",
+                title=f"Apply Unified File Patch to {os.path.basename(target_file)}",
                 description="Write modifications to target file and record diff for rollback.",
                 tool_name="workspace_write_file",
-                parameters={"file_path": "./workspace_sandbox/config.txt", "content": f"# Proofbound Auto-Config\\n# Updated for: {intent}\\nstatus=active\\n"},
+                parameters={
+                    "file_path": target_file,
+                    "content": f"# Proofbound Auto-Config\\n# Updated for: {intent}\\nstatus=active\\n"
+                },
                 estimated_risk=RiskLevel.HIGH
             ))
 
         elif "workspace" in lower or "find file" in lower or ("search" in lower and "file" in lower):
+            search_pattern = file_match.group(0) if file_match else (intent.split()[-1] if intent.split() else "config")
             steps.append(PlanStep(
                 id="step-1",
                 step_index=1,
-                title="Search Workspace Files",
+                title=f"Search Workspace for '{search_pattern}'",
                 description="Locate target file in sandboxed workspace directory.",
                 tool_name="workspace_search",
-                parameters={"pattern": "config" if "config" in lower else intent[:15]},
+                parameters={"pattern": search_pattern},
                 estimated_risk=RiskLevel.LOW
             ))
 
-        elif "research" in lower or "browse" in lower or "search" in lower or "web" in lower:
+        elif "research" in lower or "browse" in lower or "search" in lower or "web" in lower or extracted_url:
+            query_topic = re.sub(r'^(research|browse|search|lookup|find)\s+', '', intent, flags=re.IGNORECASE).strip()
+            target_url = extracted_url or f"https://wikipedia.org/wiki/{query_topic.replace(' ', '_')}"
+            
             steps.append(PlanStep(
                 id="step-1",
                 step_index=1,
-                title="Perform Evidence-Based Web Research",
+                title=f"Perform Evidence-Based Web Research: {query_topic[:40]}",
                 description="Query authorized domains and extract source citations.",
                 tool_name="browser_research",
-                parameters={"query": intent, "url": "https://wikipedia.org/wiki/Evidence-based_practice"},
+                parameters={"query": query_topic, "url": target_url},
                 estimated_risk=RiskLevel.LOW
             ))
             steps.append(PlanStep(
@@ -138,7 +164,7 @@ class ProofboundAgent:
                 title="Synthesize Research & Propose Memory Update",
                 description="Extract verified factual findings and formulate source-linked memory proposal.",
                 tool_name="memory_propose",
-                parameters={"topic": intent},
+                parameters={"topic": query_topic},
                 estimated_risk=RiskLevel.LOW
             ))
 
