@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proofbound — Verifiable Personal Operations Agent</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <header>
+    <div class="logo-group">
+      <div class="logo-badge">PB</div>
+      <h2 style="font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em;">PROOUFBOUND</h2>
+    </div>
+    <div class="nav-tabs">
+      <button id="tab-btn-console" class="tab-btn active" onclick="switchTab('console')">Operations Console</button>
+      <button id="tab-btn-memory" class="tab-btn" onclick="switchTab('memory')">Source-Linked Memory</button>
+      <button id="tab-btn-audit" class="tab-btn" onclick="switchTab('audit')">Verifiable Ledger</button>
+      <button id="tab-btn-benchmark" class="tab-btn" onclick="switchTab('benchmark')">10-Task Benchmark</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="tab-console" class="tab-content active">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">✨ Direct Personal Operations Agent</div>
+          <span style="font-size: 0.85rem; color: var(--text-muted);">Plan → Explain Risk → Request Approval → Constrained Worker → Ledger</span>
+        </div>
+        <div class="input-row">
+          <input type="text" id="intent-input" placeholder="Enter operational intent (e.g. 'Research evidence-based agent architectures', 'Draft weekly ops email', 'Patch workspace config')" onkeydown="if(event.key==='Enter') submitIntent()">
+          <button class="primary-btn" onclick="submitIntent()">Plan & Execute</button>
+        </div>
+      </div>
+
+      <div id="run-container" style="display: none;">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <span style="font-size: 0.8rem; color: var(--text-muted);">ACTION RUN:</span>
+              <span id="run-id-display" style="font-family: var(--font-mono); font-weight: bold; color: var(--accent-cyan); margin-left: 6px;"></span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <span id="risk-badge" class="badge"></span>
+              <span id="state-badge" class="badge badge-low"></span>
+            </div>
+          </div>
+          <h3 id="run-intent-display" style="margin-bottom: 1rem; font-size: 1.1rem;"></h3>
+
+          <div id="approval-box" style="display: none; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--accent-yellow); padding: 1.25rem; border-radius: 8px; margin-bottom: 1.25rem;">
+            <h4 style="color: var(--accent-yellow); margin-bottom: 0.5rem;">⚠️ Policy Gate: Approval Required Before Side-Effects</h4>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">The proposed operation crosses a designated policy boundary. Requested scopes: <strong id="approval-scopes" style="color: white;"></strong></p>
+            <div style="display: flex; gap: 10px;">
+              <button class="success-btn" onclick="handleApproval('approve')">✓ Approve Execution</button>
+              <button class="danger-btn" onclick="handleApproval('reject')">✕ Reject & Halt</button>
+            </div>
+          </div>
+
+          <h4 style="margin-bottom: 0.75rem;">Execution Plan</h4>
+          <div id="step-list" class="step-list" style="margin-bottom: 1.5rem;"></div>
+
+          <h4 style="margin-bottom: 0.75rem;">Verified Citations & Evidence Ledger</h4>
+          <div id="citation-list" style="margin-bottom: 1.5rem;"></div>
+
+          <h4 style="margin-bottom: 0.75rem;">Deterministic Event Ledger Stream</h4>
+          <div id="event-logs" class="event-log"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-memory" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🧠 Source-Linked Durable Memory Bank</div>
+          <span style="font-size: 0.85rem; color: var(--text-muted);">Every fact retains provenance, confidence, mutation logs, and point-in-time rollbacks</span>
+        </div>
+        <div id="memory-fact-list" class="step-list"></div>
+      </div>
+    </div>
+
+    <div id="tab-audit" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📜 Verifiable Action Ledger & Replay Engine</div>
+          <span style="font-size: 0.85rem; color: var(--text-muted);">Replay runs deterministically from cryptographic event hashes</span>
+        </div>
+        <div id="audit-run-list" class="step-list"></div>
+      </div>
+    </div>
+
+    <div id="tab-benchmark" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">⚡ 10-Task Verification Benchmark Matrix</div>
+          <button id="bench-run-btn" class="primary-btn" onclick="triggerBenchmark()">Run Benchmark Matrix</button>
+        </div>
+        <div id="bench-summary"></div>
+        <div id="bench-task-list" class="step-list"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
