@@ -8,8 +8,9 @@ from proofbound.core.policy_engine import CapabilityToken, PolicyEngine
 from proofbound.models.evidence import Citation, Artifact
 
 class BrowserWorker(BaseWorker):
-    def __init__(self):
+    def __init__(self, transport=None):
         super().__init__(name="browser_use_worker")
+        self.transport = transport
 
     def execute_tool(self, tool_name: str, parameters: dict[str, Any], token: CapabilityToken) -> WorkerResult:
         auth_ok, reason = PolicyEngine.evaluate_tool_call(tool_name, parameters, token)
@@ -29,34 +30,30 @@ class BrowserWorker(BaseWorker):
         if not url:
             url = f"https://wikipedia.org/wiki/{query.replace(' ', '_')}" if query else "https://wikipedia.org/wiki/Evidence-based_practice"
 
-        domain = url.split("//")[-1].split("/")[0].lower()
+        from urllib.parse import urlsplit, urljoin
+        auth_ok, reason = PolicyEngine.evaluate_tool_call("browser_fetch_page", {"url": url}, token)
+        if not auth_ok:
+            return WorkerResult(success=False, error=reason)
+        domain = urlsplit(url).hostname
         if token.domain_allowlist:
             matched = any(domain == d or domain.endswith("." + d) for d in token.domain_allowlist)
             if not matched:
                 return WorkerResult(success=False, error=f"Domain '{domain}' is blocked by security policy allowlist.")
 
         try:
-            with httpx.Client(timeout=10.0, follow_redirects=True, headers={"User-Agent": "Proofbound-Agent/0.1.0"}) as client:
-                resp = client.get(url)
+            with httpx.Client(transport=self.transport, timeout=10.0, follow_redirects=False, headers={"User-Agent": "Proofbound-Agent/0.1.0"}) as client:
+                for _ in range(6):
+                    resp = client.get(url)
+                    if not resp.is_redirect:
+                        break
+                    url = urljoin(url, resp.headers["location"])
+                    allowed, reason = PolicyEngine.evaluate_tool_call("browser_fetch_page", {"url": url}, token)
+                    if not allowed:
+                        return WorkerResult(success=False, error=f"Redirect blocked: {reason}")
                 resp.raise_for_status()
                 html_text = resp.text
         except Exception as e:
-            fallback_snippet = f"Verified research data regarding '{query}': Evidence-first architectures mandate that all agent assertions link directly to inspected sources."
-            cit = Citation(
-                id=f"cit-{uuid.uuid4().hex[:8]}",
-                run_id=token.run_id,
-                source_type="web",
-                source_uri=url,
-                title=f"Research on {query or 'Evidence'}",
-                snippet=fallback_snippet,
-                confidence=0.96
-            )
-            return WorkerResult(
-                success=True,
-                data={"url": url, "query": query, "snippet": fallback_snippet, "offline_fallback": True},
-                citations=[cit],
-                logs=[f"Network fallback for {url}: {str(e)}", f"Generated verified quote hash {cit.content_hash}"]
-            )
+            return WorkerResult(success=False, error=f"Failed to fetch {url}: {e}")
 
         clean_text = re.sub(r'<script.*?</script>', '', html_text, flags=re.DOTALL | re.IGNORECASE)
         clean_text = re.sub(r'<style.*?</style>', '', clean_text, flags=re.DOTALL | re.IGNORECASE)
@@ -87,7 +84,7 @@ class BrowserWorker(BaseWorker):
             title=page_title,
             snippet=snippet,
             content_hash=content_hash,
-            confidence=0.98
+            confidence=0.5
         )
 
         art = Artifact(

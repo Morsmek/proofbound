@@ -30,6 +30,8 @@ class ApprovalGate:
 
     @classmethod
     def grant_approval(cls, run: ActionRun, approver: str = "user", notes: Optional[str] = None) -> bool:
+        if run.completed_at or run.approval_state in [ApprovalState.REJECTED, ApprovalState.CANCELLED]:
+            raise PermissionError("A rejected or completed run cannot be approved")
         if run.approval_state in [ApprovalState.APPROVED, ApprovalState.AUTO_APPROVED]:
             return True
         
@@ -44,6 +46,8 @@ class ApprovalGate:
 
     @classmethod
     def reject_approval(cls, run: ActionRun, approver: str = "user", reason: str = "User declined") -> bool:
+        if run.completed_at:
+            raise PermissionError("A completed run cannot be rejected")
         run.approval_state = ApprovalState.REJECTED
         run.mark_completed()
         run.add_event(

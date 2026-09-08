@@ -32,7 +32,7 @@ class DraftWorker(BaseWorker):
             name=f"email_draft_{subject[:20]}.eml",
             path_or_uri=f"draft://emails/{token.run_id}",
             mime_type="message/rfc822",
-            size_bytes=len(body),
+            size_bytes=len(f"To: {recipient}\nSubject: {subject}\n\n{body}".encode("utf-8")),
             content_preview=f"To: {recipient}\nSubject: {subject}\n\n{body}"
         )
 

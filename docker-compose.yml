@@ -1,13 +1,12 @@
-version: '3.8'
-
 services:
   proofbound:
     build: .
     container_name: proofbound-app
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - PROOFBOUND_STORAGE_DIR=/data/proofbound
+      - PROOFBOUND_WORKSPACE_ROOT=/data/workspace
       - PROOFBOUND_AUTO_APPROVE_LOW_RISK=true
       - PROOFBOUND_LLM_PROVIDER=mock
     volumes:

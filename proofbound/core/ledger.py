@@ -22,6 +22,7 @@ class ActionLedger:
     def _init_db(self):
         with self._get_conn() as conn:
             conn.executescript("""
+            CREATE TABLE IF NOT EXISTS run_claims (run_id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS action_runs (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -91,6 +92,17 @@ class ActionLedger:
                 FOREIGN KEY (run_id) REFERENCES action_runs(id)
             );
             """)
+
+    def claim_run(self, run_id: str):
+        with self._get_conn() as conn:
+            try:
+                conn.execute("INSERT INTO run_claims VALUES (?)", (run_id,))
+            except sqlite3.IntegrityError:
+                raise PermissionError("Run is already executing or requires recovery after an interrupted execution")
+
+    def release_run(self, run_id: str):
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM run_claims WHERE run_id = ?", (run_id,))
 
     def save_run(self, run: ActionRun):
         with self._get_conn() as conn:

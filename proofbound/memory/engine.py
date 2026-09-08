@@ -27,9 +27,18 @@ class MemoryEngine:
         )
 
     def accept_proposal(self, proposal: MemoryUpdateProposal) -> ProvenanceFact:
+        fact_id = proposal.fact_id or f"mem-{proposal.proposal_id}"
+        existing = self.storage.get_fact(fact_id)
+        if existing:
+            proposal.status = "ACCEPTED"
+            proposal.fact_id = fact_id
+            return existing
+        if proposal.status != "PENDING":
+            raise ValueError("Only pending proposals can be accepted")
         proposal.status = "ACCEPTED"
+        proposal.fact_id = fact_id
         fact = ProvenanceFact(
-            id=f"mem-{uuid.uuid4().hex[:8]}",
+            id=fact_id,
             category=proposal.proposed_category,
             content=proposal.proposed_content,
             provenance_run_id=proposal.run_id,

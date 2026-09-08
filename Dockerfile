@@ -14,9 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt pyproject.toml README.md ./
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir -e .
-
 COPY proofbound/ proofbound/
+RUN pip install --no-cache-dir .
 
 EXPOSE 8000
 
