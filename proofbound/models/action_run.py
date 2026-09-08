@@ -97,7 +97,7 @@ class ActionRun(BaseModel):
 
     def add_event(self, event_type: str, message: str, step_index: Optional[int] = None, severity: str = "INFO", payload: Optional[dict[str, Any]] = None) -> ActionEvent:
         event = ActionEvent(
-            id=f"evt-{len(self.events) + 1:04d}",
+            id=f"{self.id}-evt-{len(self.events) + 1:04d}",
             run_id=self.id,
             step_index=step_index,
             event_type=event_type,

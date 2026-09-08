@@ -4,6 +4,9 @@ import json
 import uuid
 import httpx
 from typing import Optional, List, Dict, Any
+from proofbound.config import settings
+from pathlib import Path
+from proofbound.workers.base import WorkerResult
 from proofbound.models.action_run import (
     ActionRun,
     PlanStep,
@@ -18,26 +21,43 @@ from proofbound.memory.engine import MemoryEngine
 from proofbound.workers.browser_worker import BrowserWorker
 from proofbound.workers.workspace_worker import WorkspaceWorker
 from proofbound.workers.draft_worker import DraftWorker
-from proofbound.workers.mock_worker import MockWorker
 
 class ProofboundAgent:
     def __init__(
         self,
         ledger: Optional[ActionLedger] = None,
         memory: Optional[MemoryEngine] = None,
+        workspace_root: Optional[Path] = None,
+        browser_transport=None,
     ):
         self.ledger = ledger or ActionLedger()
         self.memory = memory or MemoryEngine()
         
-        self.browser_worker = BrowserWorker()
+        self.workspace_root = (workspace_root or settings.workspace_root).resolve()
+        self.workspace_root.mkdir(parents=True, exist_ok=True)
+        self.browser_worker = BrowserWorker(transport=browser_transport)
         self.workspace_worker = WorkspaceWorker()
         self.draft_worker = DraftWorker()
-        self.mock_worker = MockWorker()
 
     def create_run(self, intent: str, user_id: str = "user-default") -> ActionRun:
+        if not intent.strip():
+            raise ValueError("Intent must not be empty")
         run_id = f"run-{uuid.uuid4().hex[:10]}"
         assessment = PolicyEngine.evaluate_intent(intent)
         plan_steps = self._formulate_plan(run_id, intent, assessment)
+        if not assessment.is_blocked:
+            scopes = set(assessment.identified_scopes)
+            ranks = list(RiskLevel)
+            for step in plan_steps:
+                prefix = step.tool_name.split("_")[0]
+                scope = {"browser": "browser:read", "draft": "draft:create", "workspace": "workspace:read"}.get(prefix)
+                if scope:
+                    scopes.add(scope)
+                if step.tool_name in ("workspace_write_file", "workspace_patch_file"):
+                    scopes.add("workspace:write")
+                if ranks.index(step.estimated_risk) > ranks.index(assessment.risk_level):
+                    assessment.risk_level = step.estimated_risk
+            assessment.identified_scopes = sorted(scopes)
 
         run = ActionRun(
             id=run_id,
@@ -61,7 +81,7 @@ class ProofboundAgent:
             event_type="risk_assessed",
             message=assessment.explanation,
             severity="WARNING" if assessment.risk_level in [RiskLevel.HIGH, RiskLevel.CRITICAL] else "INFO",
-            payload=assessment.model_dump()
+            payload=assessment.model_dump(mode="json")
         )
 
         if assessment.is_blocked:
@@ -85,16 +105,26 @@ class ProofboundAgent:
         steps = []
         
         # Extract explicit URLs if present
+        urls = [u.rstrip(".,;)") for u in re.findall(r'https?://[^\s]+', intent)]
         url_match = re.search(r'https?://[^\s]+', intent)
         extracted_url = url_match.group(0) if url_match else ""
 
         # Extract target file paths if present
         file_match = re.search(r'[\w\-./]+\.(?:txt|json|md|py|js|yaml|toml|html|css)', intent)
-        target_file = file_match.group(0) if file_match else "./workspace_sandbox/config.txt"
+        target_file = file_match.group(0) if file_match else str(self.workspace_root / "config.txt")
+        if not Path(target_file).is_absolute():
+            path = Path(target_file)
+            if path.parts and path.parts[0] == "workspace_sandbox":
+                path = Path(*path.parts[1:])
+            target_file = str(self.workspace_root / path)
+
+        if "workspace:delete" in assessment.identified_scopes:
+            return [PlanStep(id="step-1", step_index=1, title="Unsupported destructive operation", description="Deletion is not implemented", tool_name="unsupported_delete", estimated_risk=RiskLevel.CRITICAL)]
 
         if "draft" in lower or "compose email" in lower or ("email" in lower and "research" not in lower) or "queue message" in lower:
             email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', intent)
-            recipient = email_match.group(0) if email_match else "team@proofbound.org"
+            recipient = email_match.group(0) if email_match else ""
+            body_match = re.search(r"body\s*:\s*(.*)$", intent, re.IGNORECASE | re.DOTALL)
             
             steps.append(PlanStep(
                 id="step-1",
@@ -105,12 +135,12 @@ class ProofboundAgent:
                 parameters={
                     "recipient": recipient,
                     "subject": f"Operational Brief: {intent[:30]}",
-                    "body": f"Proposed draft content generated for:\\n\\n'{intent}'\\n\\nPrepared under Proofbound Policy Gate."
+                    "body": body_match.group(1) if body_match else f"Proposed draft content generated for:\n\n'{intent}'\n\nPrepared under Proofbound Policy Gate."
                 },
                 estimated_risk=RiskLevel.MEDIUM
             ))
 
-        elif "patch" in lower or "edit file" in lower or "write file" in lower or "modify file" in lower or ("patch" in lower and "file" in lower):
+        elif "create file" in lower or "patch" in lower or "edit file" in lower or "write file" in lower or "modify file" in lower or ("patch" in lower and "file" in lower):
             steps.append(PlanStep(
                 id="step-1",
                 step_index=1,
@@ -120,6 +150,9 @@ class ProofboundAgent:
                 parameters={"pattern": os.path.basename(target_file)},
                 estimated_risk=RiskLevel.LOW
             ))
+            literal = re.search(r'content\s*:\s*(.*)$', intent, flags=re.IGNORECASE | re.DOTALL)
+            replacement = re.search(r'replace\s+"([^"\n]*)"\s+with\s+"([^"\n]*)"', intent, flags=re.IGNORECASE)
+            changes = {"content": literal.group(1)} if literal else ({"old": replacement.group(1), "new": replacement.group(2)} if replacement else {})
             steps.append(PlanStep(
                 id="step-2",
                 step_index=2,
@@ -128,13 +161,16 @@ class ProofboundAgent:
                 tool_name="workspace_write_file",
                 parameters={
                     "file_path": target_file,
-                    "content": f"# Proofbound Auto-Config\\n# Updated for: {intent}\\nstatus=active\\n"
+                    **changes
                 },
                 estimated_risk=RiskLevel.HIGH
             ))
 
+        elif "read file" in lower:
+            steps.append(PlanStep(id="step-1", step_index=1, title=f"Read {os.path.basename(target_file)}", description="Read a text file inside the workspace", tool_name="workspace_read_file", parameters={"file_path": target_file}))
+
         elif "workspace" in lower or "find file" in lower or ("search" in lower and "file" in lower):
-            search_pattern = file_match.group(0) if file_match else (intent.split()[-1] if intent.split() else "config")
+            search_pattern = os.path.basename(file_match.group(0)) if file_match else (intent.split()[-1] if intent.split() else "config")
             steps.append(PlanStep(
                 id="step-1",
                 step_index=1,
@@ -147,7 +183,9 @@ class ProofboundAgent:
 
         elif "research" in lower or "browse" in lower or "search" in lower or "web" in lower or extracted_url:
             query_topic = re.sub(r'^(research|browse|search|lookup|find)\s+', '', intent, flags=re.IGNORECASE).strip()
-            target_url = extracted_url or f"https://wikipedia.org/wiki/{query_topic.replace(' ', '_')}"
+            if not urls:
+                return [PlanStep(id="step-1", step_index=1, title="Source URL required", description="Provide one or more allowed HTTP(S) source URLs for research", tool_name="unsupported_research_without_url")]
+            target_url = urls[0]
             
             steps.append(PlanStep(
                 id="step-1",
@@ -158,11 +196,13 @@ class ProofboundAgent:
                 parameters={"query": query_topic, "url": target_url},
                 estimated_risk=RiskLevel.LOW
             ))
+            for index, url in enumerate(urls[1:], start=2):
+                steps.append(PlanStep(id=f"step-{index}", step_index=index, title=f"Read source {url}", description="Capture source excerpt", tool_name="browser_research", parameters={"url": url, "query": query_topic}))
             steps.append(PlanStep(
-                id="step-2",
-                step_index=2,
-                title="Synthesize Research & Propose Memory Update",
-                description="Extract verified factual findings and formulate source-linked memory proposal.",
+                id=f"step-{len(steps)+1}",
+                step_index=len(steps)+1,
+                title="Stage source-linked memory proposal",
+                description="Offer an inspected source excerpt for memory acceptance.",
                 tool_name="memory_propose",
                 parameters={"topic": query_topic},
                 estimated_risk=RiskLevel.LOW
@@ -172,19 +212,29 @@ class ProofboundAgent:
             steps.append(PlanStep(
                 id="step-1",
                 step_index=1,
-                title="Standard Operations Execution",
-                description="Execute read-only workspace and knowledge query.",
-                tool_name="workspace_search",
-                parameters={"pattern": intent[:10]},
+                title="Unsupported operation",
+                description="Supported tasks: source URL research, workspace file search, literal file edits, and email drafts.",
+                tool_name="unsupported_intent",
+                parameters={"intent": intent},
                 estimated_risk=RiskLevel.LOW
             ))
 
         return steps
 
     def execute_run(self, run_id: str) -> ActionRun:
+        self.ledger.claim_run(run_id)
+        try:
+            return self._execute_run(run_id)
+        finally:
+            self.ledger.release_run(run_id)
+
+    def _execute_run(self, run_id: str) -> ActionRun:
         run = self.ledger.get_run(run_id)
         if not run:
             raise ValueError(f"Run '{run_id}' not found")
+
+        if run.completed_at and run.approval_state in [ApprovalState.APPROVED, ApprovalState.AUTO_APPROVED]:
+            return run
 
         if run.approval_state not in [ApprovalState.APPROVED, ApprovalState.AUTO_APPROVED]:
             raise PermissionError(f"Cannot execute Run '{run_id}' in approval state '{run.approval_state.value}'. Approval required.")
@@ -198,6 +248,7 @@ class ProofboundAgent:
         token = PolicyEngine.issue_token(
             run_id=run.id,
             worker_id="proofbound_core_worker",
+            allowed_paths=[str(self.workspace_root)],
             scopes=run.requested_scopes
         )
 
@@ -213,7 +264,11 @@ class ProofboundAgent:
                 payload={"tool_name": step.tool_name, "parameters": step.parameters}
             )
 
-            result = self._dispatch_tool(step.tool_name, step.parameters, token, run)
+            self.ledger.save_run(run)
+            try:
+                result = self._dispatch_tool(step.tool_name, step.parameters, token, run)
+            except Exception as exc:
+                result = WorkerResult(success=False, error=str(exc))
 
             if result.success:
                 step.status = StepStatus.COMPLETED
@@ -225,7 +280,7 @@ class ProofboundAgent:
                         event_type="citation_extracted",
                         step_index=step.step_index,
                         message=f"Captured citation: '{cit.title}' from {cit.source_uri}",
-                        payload=cit.model_dump()
+                        payload=cit.model_dump(mode="json")
                     )
 
                 for art in result.artifacts:
@@ -234,7 +289,7 @@ class ProofboundAgent:
                         event_type="artifact_created",
                         step_index=step.step_index,
                         message=f"Created artifact: '{art.name}' ({art.artifact_type})",
-                        payload=art.model_dump()
+                        payload=art.model_dump(mode="json")
                     )
 
                 run.add_event(
@@ -253,13 +308,16 @@ class ProofboundAgent:
                     severity="ERROR",
                     payload={"error": result.error}
                 )
+                for remaining in run.plan_steps:
+                    if remaining.status == StepStatus.PENDING:
+                        remaining.status = StepStatus.SKIPPED
                 break
 
         if run.citations and not run.memory_updates:
             top_cit = run.citations[0]
             proposal = self.memory.propose_fact(
                 run_id=run.id,
-                content=f"Verified knowledge: {top_cit.snippet[:120]}",
+                content=f"Source excerpt: {top_cit.snippet}",
                 source=top_cit.source_uri,
                 confidence=top_cit.confidence,
                 justification=f"Extracted from verified citation {top_cit.id}"
@@ -268,12 +326,12 @@ class ProofboundAgent:
             run.add_event(
                 event_type="memory_proposed",
                 message=f"Proposed source-linked memory update ({proposal.proposal_id}). Staged for user acceptance.",
-                payload=proposal.model_dump()
+                payload=proposal.model_dump(mode="json")
             )
 
         run.mark_completed()
         run.add_event(
-            event_type="run_completed",
+            event_type="run_failed" if any(s.status == StepStatus.FAILED for s in run.plan_steps) else "run_completed",
             message=f"ActionRun {run.id} finished execution with {len(run.events)} verifiable audit events.",
             severity="INFO"
         )
@@ -289,7 +347,7 @@ class ProofboundAgent:
         elif tool_name.startswith("draft_"):
             return self.draft_worker.execute_tool(tool_name, parameters, token)
         elif tool_name == "memory_propose":
-            from proofbound.workers.base import WorkerResult
             return WorkerResult(success=True, data={"memory_proposal_staged": True})
         else:
-            return self.mock_worker.execute_tool(tool_name, parameters, token)
+            message = "Provide one or more allowed HTTP(S) source URLs for research" if tool_name == "unsupported_research_without_url" else f"Unsupported operation: {run.intent}. Use source URL research, file search/read, literal file edits, or email drafts."
+            return WorkerResult(success=False, error=message)

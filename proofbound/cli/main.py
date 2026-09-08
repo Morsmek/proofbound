@@ -61,6 +61,11 @@ def cmd_run(args):
             for cit in completed_run.citations:
                 console.print(f"  * [{cit.source_uri}] {cit.snippet[:100]}...")
 
+        if any(s.status.value == "failed" for s in completed_run.plan_steps):
+            raise SystemExit(1)
+    elif run.approval_state.value == "REJECTED":
+        raise SystemExit(1)
+
 def cmd_audit(args):
     ledger = ActionLedger()
     if args.action == "list":
@@ -127,6 +132,9 @@ def cmd_benchmark(args):
 
     console.print(table)
     console.print(f"[bold green]Summary: {res.passed_tasks}/{res.total_tasks} passed in {res.total_duration_ms}ms[/bold green]")
+
+    if res.failed_tasks:
+        raise SystemExit(1)
 
 def main():
     parser = argparse.ArgumentParser(prog="proofbound", description="Proofbound: Evidence-First Personal Operations Agent")

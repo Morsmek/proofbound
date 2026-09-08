@@ -1,11 +1,21 @@
 import os
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="PROOFBOUND_")
+
+    @model_validator(mode="after")
+    def resolve_storage(self):
+        if "db_path" not in self.model_fields_set:
+            self.db_path = self.storage_dir / "proofbound.db"
+        return self
+
     app_name: str = "Proofbound"
     version: str = "0.1.0"
     debug: bool = False
+    api_key: str = ""
     
     # Storage & DB
     storage_dir: Path = Path(os.getenv("PROOFBOUND_STORAGE_DIR", Path.home() / ".proofbound"))
@@ -49,6 +59,7 @@ class Settings(BaseSettings):
     port: int = int(os.getenv("PROOFBOUND_PORT", "8000"))
 
     def ensure_directories(self):
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.workspace_root.mkdir(parents=True, exist_ok=True)
 

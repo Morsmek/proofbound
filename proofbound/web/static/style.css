@@ -53,3 +53,9 @@ button.danger-btn { background: var(--accent-red); border: none; color: white; p
 .log-line { margin-bottom: 0.35rem; }
 .log-time { color: var(--text-muted); }
 .log-type { color: var(--accent-cyan); font-weight: bold; }
+
+pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+.step-item > div { min-width: 0; }
+button:disabled { opacity: .55; cursor: wait; }
+[hidden] { display: none !important; }
+@media(max-width: 700px) { header, .card-header, .input-row, .step-item { flex-direction: column; align-items: stretch; } .nav-tabs { flex-wrap: wrap; } main { padding: 1rem; } }

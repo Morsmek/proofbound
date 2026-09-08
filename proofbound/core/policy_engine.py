@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+from urllib.parse import urlsplit
 import secrets
 import hashlib
 from datetime import datetime, timedelta
@@ -103,7 +105,10 @@ class PolicyEngine:
             
             url = parameters.get("url", "")
             if url:
-                domain = url.split("//")[-1].split("/")[0].lower()
+                parsed = urlsplit(url)
+                if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+                    return False, "Only HTTP(S) URLs without credentials are allowed"
+                domain = parsed.hostname.lower()
                 if token.domain_allowlist:
                     matched = any(domain == d or domain.endswith("." + d) for d in token.domain_allowlist)
                     if not matched:
@@ -117,8 +122,8 @@ class PolicyEngine:
 
             path = parameters.get("file_path", "")
             if path and token.allowed_paths:
-                clean_path = os.path.normcase(os.path.abspath(path))
-                allowed = any(clean_path.startswith(os.path.normcase(os.path.abspath(p))) for p in token.allowed_paths)
+                clean_path = Path(path).resolve()
+                allowed = any(clean_path.is_relative_to(Path(p).resolve()) for p in token.allowed_paths)
                 if not allowed:
                     return False, f"Path '{path}' is outside designated workspace sandbox"
 

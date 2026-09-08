@@ -11,7 +11,7 @@
   <header>
     <div class="logo-group">
       <div class="logo-badge">PB</div>
-      <h2 style="font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em;">PROOUFBOUND</h2>
+      <h2 style="font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em;">PROOFBOUND</h2>
     </div>
     <div class="nav-tabs">
       <button id="tab-btn-console" class="tab-btn active" onclick="switchTab('console')">Operations Console</button>
@@ -22,6 +22,8 @@
   </header>
 
   <main>
+    <label>Access key (if required) <input type="password" id="access-key" autocomplete="off" placeholder="Backend access key"></label>
+    <p id="error-message" role="alert" style="color: #ff7b7b; white-space: pre-wrap;"></p>
     <div id="tab-console" class="tab-content active">
       <div class="card">
         <div class="card-header">
@@ -29,7 +31,7 @@
           <span style="font-size: 0.85rem; color: var(--text-muted);">Plan → Explain Risk → Request Approval → Constrained Worker → Ledger</span>
         </div>
         <div class="input-row">
-          <input type="text" id="intent-input" placeholder="Enter operational intent (e.g. 'Research evidence-based agent architectures', 'Draft weekly ops email', 'Patch workspace config')" onkeydown="if(event.key==='Enter') submitIntent()">
+          <input type="text" id="intent-input" placeholder="Enter operational intent (e.g. 'Research https://example.com', 'Draft weekly ops email', 'Write file config.txt content: hello')" onkeydown="if(event.key==='Enter') submitIntent()">
           <button class="primary-btn" onclick="submitIntent()">Plan & Execute</button>
         </div>
       </div>
@@ -60,10 +62,14 @@
           <h4 style="margin-bottom: 0.75rem;">Execution Plan</h4>
           <div id="step-list" class="step-list" style="margin-bottom: 1.5rem;"></div>
 
-          <h4 style="margin-bottom: 0.75rem;">Verified Citations & Evidence Ledger</h4>
+          <h4 style="margin-bottom: 0.75rem;">Source Excerpts & Evidence</h4>
           <div id="citation-list" style="margin-bottom: 1.5rem;"></div>
 
-          <h4 style="margin-bottom: 0.75rem;">Deterministic Event Ledger Stream</h4>
+          <h4>Artifacts</h4><div id="artifact-list"></div>
+          <button id="execute-run-btn" class="primary-btn" hidden onclick="task(executeCurrentRun)">Execute approved run</button>
+          <button id="rollback-run-btn" class="primary-btn" hidden onclick="rollbackRun()">Restore original file</button>
+          <h4>Memory proposals</h4><div id="proposal-list"></div>
+          <h4 style="margin-bottom: 0.75rem;">Event history</h4>
           <div id="event-logs" class="event-log"></div>
         </div>
       </div>
@@ -83,7 +89,7 @@
       <div class="card">
         <div class="card-header">
           <div class="card-title">📜 Verifiable Action Ledger & Replay Engine</div>
-          <span style="font-size: 0.85rem; color: var(--text-muted);">Replay runs deterministically from cryptographic event hashes</span>
+          <span style="font-size: 0.85rem; color: var(--text-muted);">Inspect stored events and validate their payload hashes</span>
         </div>
         <div id="audit-run-list" class="step-list"></div>
       </div>

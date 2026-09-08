@@ -38,3 +38,9 @@ all = [
 
 [project.scripts]
 proofbound = "proofbound.cli.main:main"
+
+[tool.setuptools.packages.find]
+include = ["proofbound*"]
+
+[tool.setuptools.package-data]
+"proofbound.web" = ["static/*"]

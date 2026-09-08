@@ -53,13 +53,21 @@ class WorkspaceWorker(BaseWorker):
 
     def _write_file(self, params: dict[str, Any], token: CapabilityToken) -> WorkerResult:
         file_path = params.get("file_path", "")
+        if "content" not in params and not ("old" in params and "new" in params):
+            return WorkerResult(success=False, error='Provide literal text using content: TEXT or replace "OLD" with "NEW"')
         content = params.get("content", "")
         
         os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
+        existed = os.path.exists(file_path)
         old_content = ""
         if os.path.exists(file_path):
             with open(file_path, "r", encoding="utf-8", errors="replace") as f:
                 old_content = f.read()
+
+        if "old" in params:
+            if not params["old"] or params["old"] not in old_content:
+                return WorkerResult(success=False, error="Replacement target was not found")
+            content = old_content.replace(params["old"], params["new"])
 
         diff_lines = list(difflib.unified_diff(
             old_content.splitlines(keepends=True),
@@ -85,7 +93,7 @@ class WorkspaceWorker(BaseWorker):
 
         return WorkerResult(
             success=True,
-            data={"file_path": file_path, "diff": diff_str, "bytes_written": len(content)},
+            data={"file_path": file_path, "diff": diff_str, "bytes_written": len(content.encode("utf-8")), "previous_content": old_content, "written_content": content, "existed": existed},
             artifacts=[art],
             logs=[f"Wrote file {file_path} (Diff recorded for rollback)"]
         )
@@ -101,7 +109,9 @@ class WorkspaceWorker(BaseWorker):
         for root, _, files in os.walk(root_dir):
             for file in files:
                 if pattern.lower() in file.lower():
-                    matches.append(os.path.join(root, file))
+                    candidate = Path(root, file)
+                    if candidate.resolve().is_relative_to(Path(root_dir).resolve()):
+                        matches.append(str(candidate))
 
         return WorkerResult(
             success=True,

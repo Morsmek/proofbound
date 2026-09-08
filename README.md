@@ -1,153 +1,96 @@
-# Proofbound 🛡️
+# Proofbound
 
-> **Evidence-First Personal Operations Agent with Verifiable Action Ledger & Source-Linked Memory**
+A local-first operations console with approval gates, source excerpts, a SQLite action ledger, downloadable drafts and diffs, and editable source-linked memory.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com)
-[![10-Task Benchmark](https://img.shields.io/badge/10--Task%20Benchmark-100%25%20PASS-success.svg)](#10-task-verification-benchmark)
+## Run it
 
----
-
-## 🌟 Executive Overview
-
-**Proofbound** is a local-first personal operations agent platform designed around a core principle: **agents should not just execute actions—they must prove them, explain their risks at policy boundaries, and maintain a reversible, source-linked memory.**
-
-While platforms like Hermes Agent or QwenPaw focus broadly on multi-channel messaging and general-purpose chat loops, **Proofbound** delivers a disciplined operational wedge:
-
-$$\text{Intent} \longrightarrow \text{Risk Classification} \longrightarrow \text{Typed Plan} \longrightarrow \text{Approval Gate} \longrightarrow \text{Constrained Worker} \longrightarrow \text{Evidence Ledger} \longrightarrow \text{Reversible Memory}$$
-
-```mermaid
-flowchart LR
-    A[User Intent / Trigger] --> B[Policy Engine & Risk Assessment]
-    B --> C[Typed Plan Generation]
-    C --> D{Approval Gate}
-    D -- Auto-Approved / Approved --> E[Constrained Worker Sandbox]
-    D -- Rejected --> X[Halt & Log Rejection]
-    E --> F[Evidence & Citations]
-    E --> G[Unified Diffs & Artifacts]
-    F & G --> H[Verifiable Action Ledger]
-    H --> I[Source-Linked Memory Engine]
-    I --> J[Point-in-Time Rollback]
-```
-
----
-
-## 🔑 Key Pillars & Differentiators
-
-| Capability | Hermes / Typical Agents | Proofbound Advantage |
-| :--- | :--- | :--- |
-| **Execution Safety** | Broad terminal execution | **Policy boundaries, risk tiers (LOW/MED/HIGH/CRITICAL), scoped capability tokens** |
-| **Evidence & Citations** | Unlinked free-text responses | **Cryptographically hashed claim-source citations with confidence scoring** |
-| **Memory Architecture** | Opaque long-term vector store | **Inspectable, source-linked, editable, and point-in-time reversible memory bank** |
-| **Auditability** | Raw unstructured chat transcript | **Deterministic SQLite action ledger with full event replay and JSON/Markdown export** |
-| **Operation Portability** | Immediate side effects | **Reversible staging (draft emails, staged git commits, unified diffs)** |
-
----
-
-## 📐 Canonical Contract: `ActionRun`
-
-Every operation in Proofbound is governed by the typed `ActionRun` lifecycle:
-
-```python
-ActionRun {
-    id: str,
-    user_id: str,
-    intent: str,
-    plan_steps: list[PlanStep],
-    requested_scopes: list[str],
-    risk_level: RiskLevel,            # LOW | MEDIUM | HIGH | CRITICAL
-    approval_state: ApprovalState,    # PENDING | APPROVED | REJECTED | AUTO_APPROVED
-    worker: str,
-    inputs_hash: str,                 # SHA-256 integrity hash
-    events: list[ActionEvent],        # Deterministic timeline
-    artifacts: list[Artifact],        # Unified diffs, drafts, reports
-    citations: list[Citation],        # Verified source links
-    memory_updates: list[Proposal],   # Proposed facts with rollback state
-    started_at: datetime,
-    completed_at: datetime | None,
-    rollback_or_recovery: RollbackInfo | None
-}
-```
-
----
-
-## 🚀 Quickstart Guide
-
-### 1. Installation
+Requires Python 3.10 or newer.
 
 ```bash
-# Clone repository
-git clone https://github.com/your-username/proofbound.git
+git clone https://github.com/Morsmek/proofbound.git
 cd proofbound
-
-# Install in virtualenv
-pip install -e .
-```
-
-### 2. Launch the Web Dashboard
-
-```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
 proofbound serve --port 8000
 ```
-Open **`http://localhost:8000`** in your browser to access the glassmorphic Operations Console, Live Approval Modals, Memory Bank, and Ledger Replay Engine.
 
----
+Open http://localhost:8000. On Windows activate with `.venv\Scripts\activate`.
 
-## 💻 CLI Commands
+Or run `docker compose up --build -d`. The dashboard is published on **127.0.0.1:8000**. SQLite data persists in the `proofbound_data` volume, and workspace files persist in `./workspace_sandbox`.
+
+## Working operations
+
+Enter these in the dashboard or pass them to `proofbound run 'INTENT'`:
+
+| Intent | Result |
+| --- | --- |
+| `Research https://example.com https://www.python.org` | Fetches both allowed URLs and records actual source excerpts. Network failures are failed steps, never invented citations. |
+| `Find file config.txt` | Searches filenames inside the configured workspace. |
+| `Write file config.txt content: status=active` | Requests approval, writes the literal content, and records the diff and original content. |
+| `Patch file config.txt replace "active" with "paused"` | Requests approval and replaces matching text; fails if the target is absent. |
+| `Draft email to person@example.com body: Here is the weekly update.` | Requests approval and stages a downloadable email. It does not send it. |
+
+Review the exact tool parameters before approving. Low-risk plans execute automatically; other plans wait for a decision. The console displays failures, artifacts, and pending memory proposals. Accept a proposal to populate the Memory tab; edit, delete, or roll back accepted facts there. Open previous runs from the Ledger tab to review their complete results or resume an approved, unexecuted run.
+
+**Restore original file** rolls back a completed write, including removing files created by that write. It refuses to overwrite content changed after execution. Original text is stored in the ledger, so the ledger should receive the same access protection as workspace files.
+
+The planner is deterministic and supports the operations above. It is **not** a general LLM agent. LLM provider settings are reserved and currently do not invoke models. Research requires explicit URLs; general search, autonomous code generation, email transmission, and destructive shell commands are not implemented. Unsupported requests fail visibly.
+
+## Configuration
+
+| Environment variable | Default |
+| --- | --- |
+| `PROOFBOUND_STORAGE_DIR` | `~/.proofbound` |
+| `PROOFBOUND_DB_PATH` | `<storage directory>/proofbound.db` |
+| `PROOFBOUND_WORKSPACE_ROOT` | `./workspace_sandbox` |
+| `PROOFBOUND_HOST` | `127.0.0.1` |
+| `PROOFBOUND_PORT` | `8000` |
+| `PROOFBOUND_AUTO_APPROVE_LOW_RISK` | `true` |
+| `PROOFBOUND_API_KEY` | Empty, for local use |
+| `PROOFBOUND_DOMAIN_ALLOWLIST` | JSON array of approved domains; see `proofbound/config.py` |
+
+For example, `PROOFBOUND_DOMAIN_ALLOWLIST='["example.com","python.org"]'`.
+
+Before exposing the backend remotely, set `PROOFBOUND_API_KEY` and use HTTPS. Enter that key in the dashboard's Access key field; it stays in the page's memory. This is a single-user service: `user_id` is an audit label, not a tenant boundary. The API and downloads require the configured bearer key; `/api/health` remains public.
+
+## Cloudflare Pages
+
+The repository includes a Pages API proxy, **not a separate simulated backend**. Python, SQLite and workspace operations must run on a persistent Python/Docker host.
+
+1. Run the backend on a persistent host with HTTPS and `PROOFBOUND_API_KEY` configured.
+2. Deploy the Pages project using `wrangler pages deploy proofbound/web/static` from the repository root. The `functions/` directory supplies API routes.
+3. Configure the Pages environment variable `PROOFBOUND_BACKEND_URL` with the backend's HTTPS origin and redeploy.
+4. Enter the backend access key in the dashboard.
+
+The proxy forwards browser authorization to the backend and disables API caching. Without a backend URL it returns a clear 503 setup error. This repository does not provision a hosting account, domain, TLS certificate or persistent backend automatically.
+
+## Validation
 
 ```bash
-# Execute an intent directly in the terminal
-proofbound run "Research evidence-based agent architectures"
-
-# Auto-approve risk gates
-proofbound run "Draft ops summary email" --yes
-
-# Inspect verifiable action audit logs
-proofbound audit list
-proofbound audit show --run-id <RUN_ID>
-proofbound audit replay --run-id <RUN_ID>
-
-# Manage source-linked memory and rollback
-proofbound memory list
-proofbound memory rollback --fact-id <FACT_ID>
-
-# Run the 10-Task Verification Benchmark
+python -m pytest -q
+node --test tests/proxy.test.mjs
 proofbound benchmark
-```
-
----
-
-## ⚡ 10-Task Verification Benchmark
-
-Proofbound ships with a built-in verification harness implementing all 10 benchmarks from the specification:
-
-1. **Multi-Source Research**: Automated citation extraction and validation.
-2. **Domain-Restricted Web Extraction**: Strict domain allowlist enforcement.
-3. **Sandboxed Workspace Search**: Boundary-checked filesystem exploration.
-4. **Reversible File Patch**: Unified diff generation and automated rollback.
-5. **Reversible Draft Creation**: Staged email draft composition.
-6. **Destructive Command Gate**: Interception and blocking of high-risk shell calls.
-7. **Prompt Injection Defense**: Trapping of unauthorized override attempts.
-8. **Memory Provenance Linking**: Provenance-linked fact proposal and acceptance.
-9. **Memory Snapshot Rollback**: Reverting memory fact to prior revision.
-10. **Deterministic Replay**: 100% event log match verification.
-
-Run the benchmark suite:
-```bash
 python -m proofbound.benchmark.suite
 ```
 
----
+The ten benchmark checks use **explicit deterministic HTTP fixtures and temporary databases/workspaces**. They verify core contracts, not live research quality or comprehensive prompt-injection resistance. CI runs Python tests on 3.10 and 3.12, builds the package and Docker image, and checks the Pages proxy.
 
-## 🐳 Docker Deployment
+The ledger's replay command verifies stored event payload hashes; it does not rerun side effects or provide an externally anchored, tamper-proof log. Event IDs now include the run ID, preventing later runs from overwriting earlier events. Events already lost under older versions cannot be reconstructed.
+
+Execution claims prevent concurrent requests from executing the same run twice. Completed runs return their recorded result when execution is retried. After a process crash, a retained claim intentionally blocks automatic retries: inspect the workspace and the run's events before any manual recovery. Do not remove a claim while its worker is running.
+
+## CLI
 
 ```bash
-docker-compose up --build -d
+proofbound run 'Draft email to person@example.com body: Hello' --yes
+proofbound audit list
+proofbound audit show --run-id RUN_ID
+proofbound audit replay --run-id RUN_ID
+proofbound memory list
+proofbound memory rollback --fact-id FACT_ID
 ```
 
----
+`--yes` approves pending plans; it never overrides blocked commands. File restoration, proposal acceptance and artifact downloads are available through the dashboard and documented endpoints in `/docs`.
 
-## 📄 License
-
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](LICENSE).
